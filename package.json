@@ -2,15 +2,7 @@
   "name": "pi-review",
   "version": "0.1.0",
   "description": "Adversarial multi-agent review pipeline for Pi",
-  "main": "dist/extension/index.js",
-  "types": "dist/extension/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/extension/index.js",
-      "types": "./dist/extension/index.d.ts",
-      "default": "./dist/extension/index.js"
-    }
-  },
+
   "scripts": {
     "build": "tsc --build",
     "test": "vitest run",
@@ -21,5 +13,10 @@
     "typescript": "^5.9.3",
     "vitest": "^1.6.1"
   },
-  "type": "module"
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./src/extension/index.ts"
+    ]
+  }
 }

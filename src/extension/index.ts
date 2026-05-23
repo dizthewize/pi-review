@@ -8,8 +8,33 @@ import { triage } from "../triage.js";
 import { autoFix } from "../fix.js";
 import { deduplicateFindings } from "../deduplicate.js";
 
+function resolveSubagentModel(currentModel?: { id: string; provider?: string } | string): string | undefined {
+  const modelId = typeof currentModel === "string" ? currentModel : currentModel?.id;
+  if (!modelId || modelId === "default") return undefined;
+
+  // Already fully qualified (provider/model) — use as-is
+  if (modelId.includes("/")) return modelId;
+
+  // ollama-cloud is an extension provider; subprocesses won't load it.
+  // Map to the equivalent opencode-go proxy which uses the same backend.
+  if (modelId.startsWith("ollama-cloud/")) {
+    const name = modelId.replace("ollama-cloud/", "");
+    return `opencode-go/${name}`;
+  }
+
+  // Model ID is bare (e.g. "kimi-k2.6"). Pi stores provider separately.
+  // Prepend provider so subprocesses resolve unambiguously.
+  const provider = typeof currentModel === "string" ? undefined : currentModel?.provider;
+  if (provider) {
+    return `${provider}/${modelId}`;
+  }
+
+  return modelId;
+}
+
 export default function piReviewExtension(pi: ExtensionAPI) {
-  const backend = makeBackend(pi);
+  let sessionModel: string | undefined;
+  const backend = makeBackend(pi, () => sessionModel);
 
   pi.registerTool({
     name: "pi_review",
@@ -25,6 +50,7 @@ Actions:
 
     async execute(_toolCallId: string, rawParams: unknown, _signal: any, _onUpdate: any, _ctx: any) {
       const params = rawParams as PiReviewParams;
+      sessionModel = resolveSubagentModel((_ctx as any)?.model);
       const result = await handleReviewAction(params, backend);
       return {
         content: [{ type: "text", text: result.message ?? JSON.stringify(result.data, null, 2) }],
@@ -34,7 +60,7 @@ Actions:
   });
 }
 
-function makeBackend(pi: ExtensionAPI): (params: {
+function makeBackend(pi: ExtensionAPI, getModel?: () => string | undefined): (params: {
   action: string;
   roleId: string;
   mode: string;
@@ -52,9 +78,10 @@ function makeBackend(pi: ExtensionAPI): (params: {
   if (subagentFn) {
     return async (params) => {
       const start = Date.now();
+      const resolvedModel = getModel?.();
       const result = await subagentFn({
         agent: "custom",
-        config: { systemPrompt: "" },
+        config: { systemPrompt: "", ...(resolvedModel ? { model: resolvedModel } : {}) },
         task: params.task,
         context: params.context as any,
       });
